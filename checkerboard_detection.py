@@ -49,6 +49,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     # Define constants
+    FIGS_DIR = os.path.join("figures")
     CALIBRATION_DIR = 'test-images/set2/calibration'
     PATTERN_SIZE = (8, 6)
 
@@ -69,7 +70,5 @@ if __name__ == "__main__":
         plt.scatter(corners[:, 0], corners[:, 1], s=4, c='red', marker='.')
         plt.tight_layout()
         plt.axis("off")
+        plt.savefig(os.path.join(FIGS_DIR, f"checkerboard-detection-{i+1}.png"), dpi=300, bbox_inches='tight')
         plt.show()
-
-
-

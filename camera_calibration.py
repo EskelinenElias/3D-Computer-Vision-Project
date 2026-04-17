@@ -310,6 +310,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     # Define constants
+    FIGS_DIR = os.path.join("figures")
     CALIBRATION_DIR = 'test-images/set2/calibration'
     PATTERN_SIZE = (8, 6)
     SQUARE_SIZE_CM = 4.0
@@ -378,5 +379,7 @@ if __name__ == "__main__":
         plt.legend(loc='upper right')
         plt.axis('off')
         plt.tight_layout()
+        plt.savefig(os.path.join(FIGS_DIR, f"camera-calibration-{i+1}.png"), dpi=300, bbox_inches='tight')
+        plt.show()
 
-    plt.show()
+
