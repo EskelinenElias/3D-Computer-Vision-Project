@@ -1,0 +1,15 @@
+[project]
+name = "3d-computer-vision-project"
+version = "0.1.0"
+description = "Camera calibration (Zhang's method), scene object detection, and pick-and-place motion planning from a single overhead image."
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "numpy>=2.0",
+    "scipy>=1.13",
+    "opencv-python>=4.10",
+    "pillow>=10.0",
+    "matplotlib>=3.9",
+    "ipykernel>=6.29",
+    "jupyter>=1.0",
+]
