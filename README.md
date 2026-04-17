@@ -2,7 +2,7 @@
 
 Camera calibration, object detection, and pick-and-place motion planning from a single overhead image.
 
-**Authors:** Jarkko Komulainen, Matti Aalto, Elias Eskelinen
+**Authors:** Elias Eskelinen, Jarkko Komulainen, Matti Aalto
 
 ## Pipeline
 
