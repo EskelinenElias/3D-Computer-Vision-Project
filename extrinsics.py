@@ -53,8 +53,8 @@ if __name__ == "__main__":
     from PIL import Image
     from intrinsics import calibrate_intrinsics
 
-    INTRINSIC_DIR = Path("../test-images/intrinsic_calibration")
-    SCENE_CALIB   = Path("../test-images/scene6/calibration")
+    INTRINSIC_DIR = Path("test-images/intrinsic_calibration")
+    SCENE_CALIB   = Path("test-images/scene6/calibration")
 
     # Step 1: intrinsic calibration
     intrinsic_imgs = [Image.open(p) for p in sorted(INTRINSIC_DIR.glob("*.png"))]

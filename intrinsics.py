@@ -47,7 +47,7 @@ if __name__ == "__main__":
     from pathlib import Path
     from PIL import Image
 
-    INTRINSIC_DIR = Path("../test-images/intrinsic_calibration")
+    INTRINSIC_DIR = Path("test-images/intrinsic_calibration")
 
     paths = sorted(INTRINSIC_DIR.glob("*.png"))
     imgs = [Image.open(p) for p in paths]

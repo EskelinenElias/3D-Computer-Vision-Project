@@ -138,8 +138,8 @@ if __name__ == "__main__":
     from extrinsics import solve_scene_pose
     from object_detection import _detect_cubes, _detect_target_locations, _detect_robot
 
-    INTRINSIC_DIR = Path("../test-images/intrinsic_calibration")
-    SCENE_DIR     = Path("../test-images/scene6")
+    INTRINSIC_DIR = Path("test-images/intrinsic_calibration")
+    SCENE_DIR     = Path("test-images/scene6")
     BLOCK_ORDER   = ["red", "green", "blue"]
 
     intrinsic_images = [Image.open(p) for p in sorted(INTRINSIC_DIR.glob("*.png"))]
@@ -302,89 +302,4 @@ if __name__ == "__main__":
         fig_top, _animate_top, frames=len(frames),
         interval=30, blit=False, repeat=False)
     fig_top.tight_layout()
-
-    from object_detection import ROBOT_FRONT_HEIGHT_CM
-    K = calibration["K"]
-
-    def _world_to_pixel(world_xyz):
-        camera_pt = R_scene @ np.asarray(world_xyz, dtype=float) + t_scene
-        image_pt = K @ camera_pt
-        return image_pt[0] / image_pt[2], image_pt[1] / image_pt[2]
-
-    # Precompute pixel positions for every frame (grabber tip at its height,
-    # plus the tip's floor shadow at z=0 so the held cube's projection renders).
-    frames_px = []
-    for (pos, heading, held) in frames:
-        tip_world = np.array([pos[0] + GRABBER_OFFSET_CM * np.cos(heading),
-                              pos[1] + GRABBER_OFFSET_CM * np.sin(heading),
-                              ROBOT_FRONT_HEIGHT_CM])
-        tip_floor = [tip_world[0], tip_world[1], 0.0]
-        frames_px.append({
-            "center":     _world_to_pixel([pos[0], pos[1], 0.0]),
-            "tip":        _world_to_pixel(tip_world),
-            "tip_shadow": _world_to_pixel(tip_floor),
-            "held":       held,
-        })
-
-    fig_img, ax_img = plt.subplots()
-    ax_img.imshow(scene_image)
-    # Cubes at their true top-face height plus a faint floor shadow
-    for color, xyz in cubes.items():
-        u, v = _world_to_pixel(xyz)
-        us, vs = _world_to_pixel([xyz[0], xyz[1], 0.0])
-        ax_img.scatter(us, vs, s=140, facecolors='none', edgecolors=color,
-                       linewidths=1.0, linestyle=':', marker='s', alpha=0.7, zorder=1)
-        ax_img.scatter(u, v, s=140, c=color, marker='s', alpha=0.35,
-                       edgecolors='none', zorder=2)
-    for color, xyz in targets.items():
-        u, v = _world_to_pixel(xyz)
-        ax_img.scatter(u, v, s=140, facecolors='none', edgecolors=color,
-                       linewidths=5.0, marker='o')
-
-    center_trail_px,  = ax_img.plot([], [], color='magenta', linestyle='--',
-                                    linewidth=1.2, zorder=3)
-    grabber_trail_px, = ax_img.plot([], [], color='yellow', linewidth=1.5, zorder=4)
-    body_line_px,     = ax_img.plot([], [], color='yellow', linewidth=3, zorder=5)
-    center_dot_px     = ax_img.scatter([], [], s=80, c='magenta', marker='o',
-                                       edgecolors='none', zorder=6)
-    grabber_dot_px    = ax_img.scatter([], [], s=60, c='yellow', marker='o',
-                                       edgecolors='none', zorder=6)
-    held_dot_px       = ax_img.scatter([], [], s=120, marker='s',
-                                       edgecolors='none', zorder=7)
-    held_shadow_px    = ax_img.scatter([], [], s=120, facecolors='none', marker='s',
-                                       linewidths=1.0, linestyle=':', alpha=0.8,
-                                       zorder=3)
-
-    def _animate_img(i):
-        centers_u = [frames_px[j]["center"][0] for j in range(i + 1)]
-        centers_v = [frames_px[j]["center"][1] for j in range(i + 1)]
-        tips_u    = [frames_px[j]["tip"][0]    for j in range(i + 1)]
-        tips_v    = [frames_px[j]["tip"][1]    for j in range(i + 1)]
-        f = frames_px[i]
-        center_trail_px.set_data(centers_u, centers_v)
-        grabber_trail_px.set_data(tips_u, tips_v)
-        body_line_px.set_data([f["center"][0], f["tip"][0]],
-                              [f["center"][1], f["tip"][1]])
-        center_dot_px.set_offsets([f["center"]])
-        grabber_dot_px.set_offsets([f["tip"]])
-        if f["held"] is not None:
-            held_dot_px.set_offsets([f["tip"]])
-            held_dot_px.set_facecolor(f["held"])
-            held_dot_px.set_visible(True)
-            held_shadow_px.set_offsets([f["tip_shadow"]])
-            held_shadow_px.set_edgecolor(f["held"])
-            held_shadow_px.set_visible(True)
-        else:
-            held_dot_px.set_visible(False)
-            held_shadow_px.set_visible(False)
-        return (center_trail_px, grabber_trail_px, body_line_px,
-                center_dot_px, grabber_dot_px, held_dot_px, held_shadow_px)
-
-    anim_img = animation.FuncAnimation(
-        fig_img, _animate_img, frames=len(frames),
-        interval=30, blit=False, repeat=False)
-    ax_img.set_title(f"Robot animation on {scene_paths[0].name}")
-    ax_img.axis('off')
-    fig_img.tight_layout()
-
     plt.show()

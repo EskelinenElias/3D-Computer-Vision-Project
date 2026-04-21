@@ -270,9 +270,9 @@ if __name__ == "__main__":
     from PIL import Image
     import matplotlib.pyplot as plt
 
-    FIGS_DIR = Path("../figures")
-    CALIBRATION_DIR = Path("../test-images/intrinsic_calibration")
-    SCENE_IMAGE = Path("../test-images/scene6/calibration/image0086.png")
+    FIGS_DIR = Path("figures")
+    CALIBRATION_DIR = Path("test-images/intrinsic_calibration")
+    SCENE_IMAGE = Path("test-images/scene6/calibration/image0086.png")
     PATTERN_SIZE = (8, 6)
     SQUARE_SIZE_CM = 4.0
 

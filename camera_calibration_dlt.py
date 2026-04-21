@@ -228,9 +228,9 @@ if __name__ == "__main__":
     from PIL import Image
     import matplotlib.pyplot as plt
 
-    FIGS_DIR    = Path("../figures")
-    SCENE_DIR   = Path("../test-images/set4/images")
-    POINTS_FILE = Path("../test-images/set4/dlt_points.json")
+    FIGS_DIR    = Path("figures")
+    SCENE_DIR   = Path("test-images/set4/images")
+    POINTS_FILE = Path("test-images/set4/dlt_points.json")
     SQUARE_SIZE_CM = 4.0
 
     FIGS_DIR.mkdir(parents=True, exist_ok=True)

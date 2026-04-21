@@ -186,9 +186,9 @@ if __name__ == "__main__":
     from intrinsics import calibrate_intrinsics
     from extrinsics import solve_scene_pose
 
-    FIGS_DIR      = Path("../figures")
-    INTRINSIC_DIR = Path("../test-images/intrinsic_calibration")
-    SCENE_DIR     = Path("../test-images/scene6")
+    FIGS_DIR      = Path("figures")
+    INTRINSIC_DIR = Path("test-images/intrinsic_calibration")
+    SCENE_DIR     = Path("test-images/scene6")
     SQUARE_SIZE_CM = 4.0
 
     FIGS_DIR.mkdir(parents=True, exist_ok=True)

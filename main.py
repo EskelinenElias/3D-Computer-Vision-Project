@@ -119,8 +119,8 @@ if __name__ == "__main__":
 
     from pathlib import Path
 
-    INTRINSIC_DIR = Path("../test-images/intrinsic_calibration")
-    SCENE_DIR     = Path("../test-images/scene6")
+    INTRINSIC_DIR = Path("test-images/intrinsic_calibration")
+    SCENE_DIR     = Path("test-images/scene6")
     BLOCKS = ["red", "green", "blue"]
 
     intrinsic_imgs = [Image.open(p) for p in sorted(INTRINSIC_DIR.glob("*.png"))]

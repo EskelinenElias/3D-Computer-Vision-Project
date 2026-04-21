@@ -47,8 +47,8 @@ if __name__ == "__main__":
     from PIL import Image
     import matplotlib.pyplot as plt
 
-    FIGS_DIR = Path("../figures")
-    CALIBRATION_DIR = Path("../test-images/intrinsic_calibration")
+    FIGS_DIR = Path("figures")
+    CALIBRATION_DIR = Path("test-images/intrinsic_calibration")
     PATTERN_SIZE = (8, 6)
 
     FIGS_DIR.mkdir(parents=True, exist_ok=True)
