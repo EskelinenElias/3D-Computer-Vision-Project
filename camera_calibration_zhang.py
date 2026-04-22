@@ -1,5 +1,4 @@
 import numpy as np
-import cv2
 from scipy.optimize import least_squares
 
 from checkerboard_detection import _find_checkerboard_corners
@@ -33,12 +32,8 @@ def _normalize_points(points):
     return normalized[:, :2], transform
 
 
-def _compute_homography_dlt(world_points, image_points):
-    """
-    Planar DLT homography with Hartley normalization.
-
-    World points are on Z=0, so we solve a 3x3 H mapping (X, Y) -> (u, v).
-    """
+def _compute_planar_homography(world_points, image_points):
+    """Planar DLT homography from (X, Y) on Z=0 to (u, v), Hartley-normalized."""
     assert len(world_points) >= 4
     world_points = world_points.astype(np.float64)
     image_points = image_points.astype(np.float64)
@@ -48,8 +43,8 @@ def _compute_homography_dlt(world_points, image_points):
 
     constraints = []
     for (X, Y), (u, v) in zip(world_normalized, image_normalized):
-        constraints.append([-X, -Y, -1,  0,  0,  0, u*X, u*Y, u])
-        constraints.append([ 0,  0,  0, -X, -Y, -1, v*X, v*Y, v])
+        constraints.append([ X,  Y,  1,  0,  0,  0, -u*X, -u*Y, -u])
+        constraints.append([ 0,  0,  0,  X,  Y,  1, -v*X, -v*Y, -v])
     constraints = np.array(constraints)
 
     _, _, Vt = np.linalg.svd(constraints)
@@ -72,12 +67,7 @@ def _vij(H, i, j):
 
 
 def _zhang_extract_intrinsics(homographies):
-    """
-    Closed-form K from a list of planar homographies (Z. Zhang, 2000).
-
-    Each H contributes two constraints on the image of the absolute conic B,
-    then K is recovered by Cholesky-like decomposition.
-    """
+    """Closed-form K from a list of planar homographies (Zhang, 2000)."""
     n_views = len(homographies)
     V = np.zeros((2 * n_views, 6), dtype=np.float64)
     for k, H in enumerate(homographies):
@@ -87,16 +77,40 @@ def _zhang_extract_intrinsics(homographies):
     _, _, Vt = np.linalg.svd(V)
     B11, B12, B22, B13, B23, B33 = Vt[-1]
 
-    cy    = (B12 * B13 - B11 * B23) / (B11 * B22 - B12**2)
-    lam   = B33 - (B13**2 + cy * (B12 * B13 - B11 * B23)) / B11
-    fx    = np.sqrt(abs(lam / B11))
-    fy    = np.sqrt(abs(lam * B11 / (B11 * B22 - B12**2)))
-    skew  = -B12 * fx**2 * fy / lam
-    cx    = skew * cy / fy - B13 * fx**2 / lam
+    cy = (B12 * B13 - B11 * B23) / (B11 * B22 - B12**2)
+    lam = B33 - (B13**2 + cy * (B12 * B13 - B11 * B23)) / B11
+    fx = np.sqrt(abs(lam / B11))
+    fy = np.sqrt(abs(lam * B11 / (B11 * B22 - B12**2)))
+    skew = -B12 * fx**2 * fy / lam
+    cx = skew * cy / fy - B13 * fx**2 / lam
 
-    return np.array([[fx,  skew, cx],
-                     [0,   fy,   cy],
-                     [0,   0,    1]], dtype=np.float64)
+    return np.array([[fx, skew, cx], 
+                     [ 0,  fy,  cy], 
+                     [ 0,   0,   1]], dtype=np.float64)
+
+
+def _rodrigues(x):
+    """Convert between axis-angle vector (3,) and rotation matrix (3,3)."""
+    x = np.asarray(x, dtype=np.float64)
+    if x.shape == (3, 3):
+        cos_theta = np.clip((np.trace(x) - 1.0) / 2.0, -1.0, 1.0)
+        theta = np.arccos(cos_theta)
+        if theta < 1e-8:
+            return np.zeros(3)
+        axis = np.array([x[2, 1] - x[1, 2],
+                         x[0, 2] - x[2, 0],
+                         x[1, 0] - x[0, 1]]) / (2.0 * np.sin(theta))
+        return axis * theta
+
+    rvec = x.ravel()
+    theta = np.linalg.norm(rvec)
+    if theta < 1e-8:
+        return np.eye(3)
+    k = rvec / theta
+    K_skew = np.array([[    0, -k[2],  k[1]],
+                       [ k[2],     0, -k[0]],
+                       [-k[1],  k[0],     0]])
+    return np.eye(3) + np.sin(theta) * K_skew + (1 - np.cos(theta)) * (K_skew @ K_skew)
 
 
 def _extract_extrinsics(K, H):
@@ -123,13 +137,13 @@ def _extract_extrinsics(K, H):
         Vt[-1] *= -1
         rotation = U @ Vt
 
-    rvec, _ = cv2.Rodrigues(rotation)
-    return rvec, translation.reshape(3, 1)
+    rvec = _rodrigues(rotation)
+    return rvec.reshape(3, 1), translation.reshape(3, 1)
 
 
 def _project_points(object_points, K, rvec, tvec):
     """Project 3D points to 2D pixel coordinates. Returns (N, 2)."""
-    rotation, _ = cv2.Rodrigues(rvec)
+    rotation = _rodrigues(rvec)
     points_camera = rotation @ object_points.T + tvec.reshape(3, 1)
     points_image = K @ points_camera
     points_image = points_image[:2] / points_image[2:3]
@@ -155,26 +169,28 @@ def _is_plausible_K(K, image_size):
             fx < 10 * max(w, h) and fy < 10 * max(w, h))
 
 
-def calibrate(images, pattern_size=(8, 6), square_size_cm=4.0):
+def compute_intrinsics(images, pattern_size=(8, 6), square_size_cm=4.0):
     """
-    Camera calibration from checkerboard images using Zhang's method.
+    Recover the camera intrinsic matrix K via Zhang's method.
 
     Pipeline:
       1. Detect corners in each image.
-      2. DLT homography per view.
+      2. Planar DLT homography per view.
       3. Zhang's closed-form K.
-      4. Per-view extrinsics from K + H.
+      4. Initial per-view extrinsics from K + H.
       5. Joint Levenberg-Marquardt refinement of K + all extrinsics.
 
-    Returns dict with 'K', 'dist', 'image_size', 'rvecs', 'tvecs'.
+    Returns the 3x3 intrinsic matrix K.
     """
+
+    # 1. Build object (world) points, find checkerboard corners (image points) from each image
+
     object_points_template = _build_object_points(pattern_size, square_size_cm)
-    object_points_per_view = []
-    image_points_per_view = []
+    object_points_per_view, image_points_per_view = [], []
     image_size = None
 
-    for pil_image in images:
-        gray = np.array(pil_image.convert("L"), dtype=np.uint8)
+    for image in images:
+        gray = np.array(image.convert("L"), dtype=np.uint8)
         if image_size is None:
             h, w = gray.shape
             image_size = (w, h)
@@ -186,24 +202,27 @@ def calibrate(images, pattern_size=(8, 6), square_size_cm=4.0):
             continue
 
     if len(object_points_per_view) < 2:
-        raise ValueError(
-            f"Only {len(object_points_per_view)} views found — need at least 2.")
+        raise ValueError(f"Only {len(object_points_per_view)} views found - need at least 2.")
+
+    # 2. Compute planar homographies between each set of image points and the world points
 
     n_views = len(object_points_per_view)
 
-    # DLT homographies
     homographies = [
-        _compute_homography_dlt(obj_pts[:, :2], img_pts)
+        _compute_planar_homography(obj_pts[:, :2], img_pts)
         for obj_pts, img_pts in zip(object_points_per_view, image_points_per_view)
     ]
 
+    # 3. Solve K using Zhang's closed form method
+
     K_initial = _zhang_extract_intrinsics(homographies)
-    print(f"[calibrate] Zhang's K:\n{np.array2string(K_initial, precision=1)}")
+    print(f"[compute_intrinsics] Zhang's K:\n{np.array2string(K_initial, precision=1)}")
     if not _is_plausible_K(K_initial, image_size):
-        print("[calibrate] Fallback to default K estimate")
+        print("[compute_intrinsics] Fallback to default K estimate")
         K_initial = _default_K(image_size)
 
-    # Initial extrinsics per view
+    # 4. Initial per-view extrinsics
+
     rvecs_initial, tvecs_initial = [], []
     for H in homographies:
         rvec, tvec = _extract_extrinsics(K_initial, H)
@@ -219,6 +238,8 @@ def calibrate(images, pattern_size=(8, 6), square_size_cm=4.0):
         params_initial[base    : base + 3] = rvecs_initial[i].ravel()
         params_initial[base + 3: base + 6] = tvecs_initial[i].ravel()
 
+    # 5. Levenberg-Marquardt refinement - adjust parameters to minimize squared reprojection errors
+
     def residuals(params):
         f, cx, cy = params[:3]
         K_current = np.array([[f, 0, cx], [0, f, cy], [0, 0, 1]], dtype=np.float64)
@@ -233,8 +254,7 @@ def calibrate(images, pattern_size=(8, 6), square_size_cm=4.0):
             all_residuals.append((projected - observed).ravel())
         return np.concatenate(all_residuals)
 
-    # Wide focal bounds so LM can escape a bad initial guess; principal point
-    # constrained to the central region of the image.
+    # Initial quesses
     lower = np.full_like(params_initial, -np.inf)
     upper = np.full_like(params_initial,  np.inf)
     lower[0], upper[0] = f_initial * 0.3, f_initial * 3.0
@@ -253,15 +273,55 @@ def calibrate(images, pattern_size=(8, 6), square_size_cm=4.0):
         tvecs.append(result.x[base + 3: base + 6].reshape(3, 1))
 
     rms_error = np.sqrt(np.mean(result.fun ** 2))
-    print(f"[calibrate] RMS reprojection error: {rms_error:.4f} px ({n_views} views)")
+    print(f"[compute_intrinsics] RMS reprojection error: {rms_error:.4f} px ({n_views} views)")
 
-    return {
-        "K": K,
-        "dist": np.zeros((1, 5)),
-        "image_size": image_size,
-        "rvecs": rvecs,
-        "tvecs": tvecs,
-    }
+    return K
+
+
+def compute_extrinsics(scene_img, K, pattern_size=(8, 6), square_size_cm=4.0):
+    """
+    Recover the camera pose (R, t) in the board's world frame.
+
+    Pipeline:
+      1. Detect checkerboard corners in the scene image.
+      2. Planar DLT homography from board (Z=0) to pixel coords.
+      3. Initial (R, t) from H + K via `_extract_extrinsics`.
+      4. Levenberg-Marquardt refinement.
+
+    Returns (R, t, reproj_rms) in world cm and pixels.
+    """
+
+    # 1. Build object (world) points, find checkerboard corners (image points) from each image
+    
+    gray = np.array(scene_img.convert("L"), dtype=np.uint8)
+    corners, _ = _find_checkerboard_corners(gray, pattern_size)
+    corners = corners.astype(np.float64)
+    object_points = _build_object_points(pattern_size, square_size_cm).astype(np.float64)
+
+    # 2. Compute planar DLT homography
+
+    H = _compute_planar_homography(object_points[:, :2], corners)
+
+    # 3. Extract inintial extrensics
+
+    rvec_init, tvec_init = _extract_extrinsics(K, H)
+    params_initial = np.concatenate([rvec_init.ravel(), tvec_init.ravel()])
+
+    # 4. LM refinement
+
+    def residuals(params):
+        rvec = params[:3].reshape(3, 1)
+        tvec = params[3:].reshape(3, 1)
+        return (_project_points(object_points, K, rvec, tvec) - corners).ravel()
+
+    result = least_squares(residuals, params_initial, method="lm")
+    rvec = result.x[:3].reshape(3, 1)
+    tvec = result.x[3:].reshape(3, 1)
+
+    R = _rodrigues(rvec)
+    t = tvec.ravel()
+    reproj_rms = float(np.sqrt(np.mean(result.fun ** 2)))
+    return R, t, reproj_rms
 
 
 if __name__ == "__main__":
@@ -282,35 +342,31 @@ if __name__ == "__main__":
     calib_images = [Image.open(p) for p in calib_paths]
     print(f"Loaded {len(calib_images)} calibration image(s) from {CALIBRATION_DIR}")
 
-    calibration = calibrate(calib_images, PATTERN_SIZE, SQUARE_SIZE_CM)
-
-    K = calibration["K"]
-    rvecs = calibration["rvecs"]
-    tvecs = calibration["tvecs"]
-    w, h = calibration["image_size"]
-    print("\n=== Calibration result ===")
-    print(f"Image size:    {w} x {h}")
-    print(f"Intrinsics K:\n{np.array2string(K, precision=2)}")
+    K = compute_intrinsics(calib_images, PATTERN_SIZE, SQUARE_SIZE_CM)
+    w, h = calib_images[0].size
+    print(f"\nIntrinsics K:\n{np.array2string(K, precision=2)}")
     print(f"Focal length:  fx={K[0, 0]:.1f}, fy={K[1, 1]:.1f}")
     print(f"Principal pt:  cx={K[0, 2]:.1f}, cy={K[1, 2]:.1f}")
-    print(f"Views used:    {len(rvecs)}")
 
     assert K.shape == (3, 3), "K must be 3x3"
     assert K[0, 0] > 0 and K[1, 1] > 0, "Focal lengths must be positive"
     assert 0 < K[0, 2] < w and 0 < K[1, 2] < h, "Principal point must lie inside image"
-    assert len(rvecs) == len(calib_images), "Expected one rvec per view"
-    print("\nAll sanity checks passed.")
+    print("\nIntrinsic calibration OK.")
 
-    # Overlay the world frame on a scene image (or the last calibration image)
+    overlay_image = Image.open(SCENE_IMAGE) if SCENE_IMAGE.exists() else calib_images[-1]
+    R, t, rms = compute_extrinsics(overlay_image, K, PATTERN_SIZE, SQUARE_SIZE_CM)
+    print(f"Extrinsic RMS: {rms:.3f} px")
+
     axis_length_cm = 3 * SQUARE_SIZE_CM
     world_frame = np.array([[0, 0, 0],
                             [axis_length_cm,  0,              0],
                             [0,              -axis_length_cm, 0],
                             [0,               0,              axis_length_cm]],
                            dtype=np.float64)
-    axes_image = _project_points(world_frame, K, rvecs[-1], tvecs[-1])
+    axes_cam = (R @ world_frame.T + t.reshape(3, 1))
+    axes_img = K @ axes_cam
+    axes_image = (axes_img[:2] / axes_img[2:3]).T
     origin_px = axes_image[0]
-    overlay_image = Image.open(SCENE_IMAGE) if SCENE_IMAGE.exists() else calib_images[-1]
 
     plt.figure()
     plt.imshow(overlay_image)

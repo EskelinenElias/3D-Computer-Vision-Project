@@ -183,8 +183,7 @@ if __name__ == "__main__":
     from pathlib import Path
     from PIL import Image
     import matplotlib.pyplot as plt
-    from intrinsics import calibrate_intrinsics
-    from extrinsics import solve_scene_pose
+    from camera_calibration_zhang import compute_intrinsics, compute_extrinsics
 
     FIGS_DIR      = Path("figures")
     INTRINSIC_DIR = Path("test-images/intrinsic_calibration")
@@ -195,11 +194,11 @@ if __name__ == "__main__":
 
     # Two-step calibration: intrinsic K, then scene pose
     intrinsic_images = [Image.open(p) for p in sorted(INTRINSIC_DIR.glob("*.png"))]
-    K = calibrate_intrinsics(intrinsic_images, method="zhang")
+    K = compute_intrinsics(intrinsic_images)
 
     extrinsic_path = sorted((SCENE_DIR / "calibration").glob("*.png"))[0]
     extrinsic_image = Image.open(extrinsic_path)
-    R_scene, t_scene, rms = solve_scene_pose(extrinsic_image, K)
+    R_scene, t_scene, rms = compute_extrinsics(extrinsic_image, K)
     print(f"Scene pose from {extrinsic_path.name} — reprojection RMS: {rms:.3f} px")
 
     calibration = {"K": K, "dist": np.zeros((1, 5)),

@@ -5,8 +5,7 @@ import numpy as np
 from PIL import Image
 
 from camera_calibration_dlt import calibrate as _calibrate_dlt
-from intrinsics import calibrate_intrinsics
-from extrinsics import solve_scene_pose
+from camera_calibration_zhang import compute_intrinsics, compute_extrinsics
 from object_detection import _detect_cubes, _detect_target_locations, _detect_robot
 from robot_control import _plan_for_color, _translate
 
@@ -20,11 +19,11 @@ def calibrate(intrinsic_imgs, extrinsic_img=None, method="zhang", **kwargs):
 
     The calibration is a two-step process:
       1. Intrinsics (K) — a property of the lens + sensor, recoverable once
-         per camera. Uses `calibrate_intrinsics` for method="zhang", or the
-         DLT decomposition for method="dlt".
+         per camera. Uses Zhang's method for method="zhang", or the DLT
+         decomposition for method="dlt".
       2. Extrinsics (R_scene, t_scene) — where the camera is in the world
-         for this specific scene. Uses `solve_scene_pose` (solvePnP on the
-         checkerboard) for method="zhang", or DLT's built-in pose output.
+         for this specific scene. Uses solvePnP for method="zhang", or DLT's
+         built-in pose output for method="dlt".
 
     Args:
         intrinsic_imgs (list<PIL.Image>): images used to recover K.
@@ -52,9 +51,12 @@ def calibrate(intrinsic_imgs, extrinsic_img=None, method="zhang", **kwargs):
         extrinsic_img = intrinsic_imgs[-1 if method == "zhang" else 0]
 
     if method == "zhang":
-        K = calibrate_intrinsics(intrinsic_imgs, method="zhang")
-        R_scene, t_scene, reproj_rms = solve_scene_pose(extrinsic_img, K)
+        K = compute_intrinsics(intrinsic_imgs)
+        R_scene, t_scene, reproj_rms = compute_extrinsics(extrinsic_img, K)
     else:
+
+        # TODO starts - insert proper DLT calibration here
+
         if "dlt_points_file" in kwargs:
             with open(kwargs.pop("dlt_points_file")) as f:
                 saved = json.load(f)
@@ -71,8 +73,10 @@ def calibrate(intrinsic_imgs, extrinsic_img=None, method="zhang", **kwargs):
         t_scene = dlt_result["tvecs"][-1].ravel()
         reproj_rms = None
 
+        # TODO ends
+
     if reproj_rms is not None:
-        print(f"[calibrate] scene-pose RMS: {reproj_rms:.3f} px")
+        print(f"[compute_extrinsics] scene-pose RMS: {reproj_rms:.3f} px")
 
     return {
         "K": K,
