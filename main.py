@@ -53,7 +53,8 @@ def calibrate(intrinsic_imgs, extrinsic_img=None, method="zhang", **kwargs):
         K = compute_intrinsics(intrinsic_imgs)
         R_scene, t_scene, reproj_rms = compute_extrinsics(extrinsic_img, K)
     elif method == "dlt":
-        _, K, R_scene, t_scene = calibrate_DLT(extrinsic_img)
+        _, K, R_scene, C = calibrate_DLT(extrinsic_img)
+        t_scene = -R_scene @ C
         reproj_rms = None
 
 
