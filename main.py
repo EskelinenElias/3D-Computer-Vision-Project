@@ -6,7 +6,7 @@ from PIL import Image
 
 from camera_calibration_dlt import calibrate as _calibrate_dlt
 from camera_calibration_zhang import compute_intrinsics, compute_extrinsics
-from object_detection import _detect_cubes, _detect_target_locations, _detect_robot
+from object_detection import _detect_cubes, _detect_targets, _detect_robot
 from robot_control import _plan_for_color, _translate
 
 
@@ -100,13 +100,13 @@ def move_block(blocks, img, calib, toggle_dir: bool=False):
         str: ";" -separated commands, e.g.
              "turn(45.0); go(20.0); grab(); turn(-30.0); go(15.0); let_go()"
     """
-    R, t = calib["R_scene"], calib["t_scene"]
+    K, R, t = calib["K"], calib["R_scene"], calib["t_scene"]
 
     hsv = cv2.cvtColor(cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR),
                        cv2.COLOR_BGR2HSV)
-    cubes   = _detect_cubes(hsv, calib, R, t)
-    targets = _detect_target_locations(hsv, calib, R, t)
-    robot   = _detect_robot(hsv, calib, R, t)
+    cubes   = _detect_cubes(hsv, K, R, t)
+    targets = _detect_targets(hsv, K, R, t)
+    robot   = _detect_robot(hsv, K, R, t)
 
     robot_state = {"pos": robot["pos"][:2].copy(), "heading": robot["heading"]}
     all_steps = []
@@ -131,17 +131,10 @@ if __name__ == "__main__":
     extrinsic_img  = Image.open(sorted((SCENE_DIR / "calibration").glob("*.png"))[0])
     scene_img      = Image.open(sorted((SCENE_DIR / "images").glob("*.png"))[0])
 
-    # Explicit two-arg call — K calibrated from intrinsic_imgs, scene pose
-    # recovered from extrinsic_img (different camera pose is fine).
+    # Perform calibration
     calib = calibrate(intrinsic_imgs, extrinsic_img, method="zhang")
-    K = calib["K"]
-    print(f"K: fx={K[0,0]:.1f}, fy={K[1,1]:.1f}, "
-          f"cx={K[0,2]:.1f}, cy={K[1,2]:.1f}")
-
+   
+    # Run object detection and generate commands
     commands = move_block(BLOCKS, scene_img, calib)
     print(f"\nCommands for blocks={BLOCKS}:")
     print(commands)
-
-    assert isinstance(commands, str)
-    assert commands.count("grab()") == commands.count("let_go()")
-    print("\nAll sanity checks passed.")

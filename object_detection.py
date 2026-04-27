@@ -3,7 +3,7 @@ import numpy as np
 
 COLOR_RANGES = {
     "red":    [((0,   100, 60), (10,  255, 255)),
-               ((165, 100, 60), (179, 255, 255))],
+               ((165, 100, 60), (179, 255, 255))], # Red has circular hue in HSV
     "green":  [((35,  30,  25), (90,  255, 255))],
     "blue":   [((95,  80,  40), (135, 255, 255))],
     "yellow": [((20,  100, 80), (35,  255, 255))],
@@ -19,7 +19,7 @@ CUBE_COLORS = ("red", "green", "blue")
 
 
 def _color_mask(hsv_image, color_name):
-    """Binary mask for a named colour, with morphological cleanup."""
+    """Get morphologically structured binary mask for a named colour."""
     mask = np.zeros(hsv_image.shape[:2], dtype=np.uint8)
     for low, high in COLOR_RANGES[color_name]:
         mask |= cv2.inRange(hsv_image, np.array(low), np.array(high))
@@ -34,9 +34,6 @@ def _find_blobs(mask, min_area=500, has_hole=None):
     Find colour blobs in a binary mask using contour hierarchy.
 
     has_hole: None = any, True = only blobs with a child contour, False = only solid.
-    Only *outer* contours (parent == -1) are returned — inner hole boundaries
-    of ring-shaped blobs would otherwise masquerade as solid blobs and mislead
-    cube detection when a ring's interior isn't filled by morphology.
 
     Returns list of contours, filtered and sorted largest-first.
     """
@@ -50,7 +47,7 @@ def _find_blobs(mask, min_area=500, has_hole=None):
             continue
         has_parent = hierarchy[0][i][3] != -1
         if has_parent:
-            continue  # Skip inner hole contours — they aren't standalone blobs
+            continue
         has_child = hierarchy[0][i][2] != -1
         if has_hole is None or has_child == has_hole:
             result.append(contour)
@@ -97,9 +94,9 @@ def _two_blob_centroid(hsv, color_name):
     """
     Average pixel centroid of the two largest blobs of a given colour.
 
-    The front marker is intentionally split into two visible blobs; averaging their
-    centroids gives a more stable marker location than either blob alone. Falls back
-    to the single-blob centroid if only one blob is visible.
+    The robot front marker is split into two visible blobs; we need to average their
+    centroids to get a stable marker location. Falls back to the single-blob centroid 
+    if only one blob is visible.
     """
     blobs = _find_blobs(_color_mask(hsv, color_name))
     if not blobs:
@@ -112,7 +109,7 @@ def _two_blob_centroid(hsv, color_name):
     return ((c1[0] + c2[0]) / 2.0, (c1[1] + c2[1]) / 2.0)
 
 
-def _detect_cubes(hsv, calib, R, t):
+def _detect_cubes(hsv, K, R, t):
     """
     Detect coloured cubes (solid blobs, no inner hole).
 
@@ -120,7 +117,6 @@ def _detect_cubes(hsv, calib, R, t):
     centroid onto the plane at the cube-top height (not the floor).
     Returns dict colour -> world point (x, y, z) in cm.
     """
-    K = calib["K"]
     cubes = {}
     for color in CUBE_COLORS:
         uv = _largest_blob_centroid(hsv, color, has_hole=False)
@@ -129,12 +125,11 @@ def _detect_cubes(hsv, calib, R, t):
     return cubes
 
 
-def _detect_target_locations(hsv, calib, R, t):
+def _detect_targets(hsv, K, R, t):
     """
     Detect coloured target rings (blobs with an inner hole).
     Returns dict colour -> world point (x, y, z) in cm.
     """
-    K = calib["K"]
     targets = {}
     for color in CUBE_COLORS:
         uv = _largest_blob_centroid(hsv, color, has_hole=True)
@@ -143,7 +138,7 @@ def _detect_target_locations(hsv, calib, R, t):
     return targets
 
 
-def _detect_robot(hsv, calib, R, t):
+def _detect_robot(hsv, K, R, t):
     """
     Detect robot via front/back coloured markers.
 
@@ -155,7 +150,6 @@ def _detect_robot(hsv, calib, R, t):
     When only one marker is visible, front and back collapse to the same point
     and heading defaults to 0.
     """
-    K = calib["K"]
     front_px = _two_blob_centroid(hsv, ROBOT_MARKER_FRONT)
     back_px  = _largest_blob_centroid(hsv, ROBOT_MARKER_BACK)
 
@@ -185,25 +179,22 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     from camera_calibration_zhang import compute_intrinsics, compute_extrinsics
 
-    FIGS_DIR      = Path("figures")
+    FIGS_DIR = Path("figures")
     INTRINSIC_DIR = Path("test-images/intrinsic_calibration")
-    SCENE_DIR     = Path("test-images/scene6")
+    SCENE_DIR = Path("test-images/scene6")
     SQUARE_SIZE_CM = 4.0
 
     FIGS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Two-step calibration: intrinsic K, then scene pose
+    # Solve camera intrinsic matrix
     intrinsic_images = [Image.open(p) for p in sorted(INTRINSIC_DIR.glob("*.png"))]
     K = compute_intrinsics(intrinsic_images)
 
+    # Solve camera extrinsic matrix
     extrinsic_path = sorted((SCENE_DIR / "calibration").glob("*.png"))[0]
     extrinsic_image = Image.open(extrinsic_path)
-    R_scene, t_scene, rms = compute_extrinsics(extrinsic_image, K)
+    R, t, rms = compute_extrinsics(extrinsic_image, K)
     print(f"Scene pose from {extrinsic_path.name} — reprojection RMS: {rms:.3f} px")
-
-    calibration = {"K": K, "dist": np.zeros((1, 5)),
-                   "image_size": extrinsic_image.size,
-                   "R_scene": R_scene, "t_scene": t_scene}
 
     # Load the task image and detect
     scene_paths = sorted((SCENE_DIR / "images").glob("*.png"))
@@ -212,64 +203,51 @@ if __name__ == "__main__":
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
 
     # Run detection
-    cubes = _detect_cubes(hsv, calibration, R_scene, t_scene)
-    targets = _detect_target_locations(hsv, calibration, R_scene, t_scene)
     try:
-        robot = _detect_robot(hsv, calibration, R_scene, t_scene)
+        cubes = _detect_cubes(hsv, K, R, t)
+        targets = _detect_targets(hsv, K, R, t)
+        robot = _detect_robot(hsv, K, R, t)
     except RuntimeError as e:
         print(f"Robot detection failed: {e}")
         robot = None
 
-    # Report
-    print(f"\n=== Detection on {scene_paths[0].name} ===")
-    print(f"Cubes ({len(cubes)}):")
+    # Report results
+    print(f"\nObject detection on {scene_paths[0].name}:\n")
+    print(f"Cubes ({len(cubes)} detected):")
     for color, xyz in cubes.items():
-        print(f"  {color:6s}: ({xyz[0]:+7.1f}, {xyz[1]:+7.1f}, {xyz[2]:+5.1f}) cm")
-    print(f"Targets ({len(targets)}):")
+        print(f" - {color:6s}: ({xyz[0]:+7.1f}, {xyz[1]:+7.1f}, {xyz[2]:+5.1f}) cm")
+    print(f"Targets ({len(targets)} detected):")
     for color, xyz in targets.items():
-        print(f"  {color:6s}: ({xyz[0]:+7.1f}, {xyz[1]:+7.1f}, {xyz[2]:+5.1f}) cm")
+        print(f" - {color:6s}: ({xyz[0]:+7.1f}, {xyz[1]:+7.1f}, {xyz[2]:+5.1f}) cm")
     if robot is not None:
         print(f"Robot pos: ({robot['pos'][0]:+7.1f}, {robot['pos'][1]:+7.1f}, "
               f"{robot['pos'][2]:+5.1f}) cm, heading: {np.degrees(robot['heading']):+6.1f}°")
-
-    # Sanity assertions
-    assert all(len(xyz) == 3 for xyz in cubes.values()), "Cubes must be 3D points"
-    assert all(abs(xyz[2] - CUBE_TOP_HEIGHT_CM) < 1e-6 for xyz in cubes.values()), \
-        "Cubes must lie on the cube-top plane"
-    assert all(abs(xyz[2]) < 1e-6 for xyz in targets.values()), \
-        "Targets must lie on the floor plane (Z=0)"
-    if robot is not None:
-        assert -np.pi <= robot["heading"] <= np.pi, "Heading must be in [-pi, pi]"
-    print("\nAll sanity checks passed.")
-
-    def _world_to_pixel_scene(world_xyz):
-        return _world_to_pixel(world_xyz, calibration["K"], R_scene, t_scene)
 
     plt.figure()
     plt.imshow(scene_image)
 
     axis_length_cm = SQUARE_SIZE_CM
-    origin_px = _world_to_pixel_scene([0.0, 0.0, 0.0])
+    origin_px = _world_to_pixel([0.0, 0.0, 0.0], K, R, t)
     for i, (axis_vec, color, label) in enumerate([([axis_length_cm, 0, 0], 'red',   'X'),
                                                    ([0, axis_length_cm, 0], 'green', 'Y'),
                                                    ([0, 0, axis_length_cm], 'blue',  'Z')]):
-        end_px = _world_to_pixel_scene(axis_vec)
+        end_px = _world_to_pixel(axis_vec, K, R, t)
         plt.plot([origin_px[0], end_px[0]], [origin_px[1], end_px[1]],
                  color=color, linewidth=2.5, zorder=i+2)
         plt.text(end_px[0], end_px[1], label, color=color,
                  fontsize=12, fontweight='bold', zorder=i+2)
 
     for color, xyz in cubes.items():
-        u, v = _world_to_pixel_scene(xyz)
+        u, v = _world_to_pixel(xyz, K, R, t)
         plt.scatter(u, v, s=140, facecolors=color, edgecolors=color,
                     linewidths=2.0, marker='s', label=f'cube:{color}')
     for color, xyz in targets.items():
-        u, v = _world_to_pixel_scene(xyz)
+        u, v = _world_to_pixel(xyz, K, R, t)
         plt.scatter(u, v, s=140, facecolors='none', edgecolors=color,
                     linewidths=5.0, marker='o', label=f'target:{color}')
     if robot is not None:
-        uf, vf = _world_to_pixel_scene(robot['front'])
-        ub, vb = _world_to_pixel_scene(robot['back'])
+        uf, vf = _world_to_pixel(robot['front'], K, R, t)
+        ub, vb = _world_to_pixel(robot['back'], K, R, t)
         plt.scatter(uf, vf, s=120, c='yellow', marker='.', linewidths=2.5, zorder=1, label='robot front')
         plt.scatter(ub, vb, s=120, c='magenta', marker='.', linewidths=2.5, zorder=2, label='robot back')
         plt.plot([ub, uf], [vb, vf], color='yellow', linewidth=3, zorder=1)

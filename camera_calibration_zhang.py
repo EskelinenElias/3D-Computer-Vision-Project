@@ -361,8 +361,7 @@ if __name__ == "__main__":
     world_frame = np.array([[0, 0, 0],
                             [axis_length_cm,  0,              0],
                             [0,              -axis_length_cm, 0],
-                            [0,               0,              axis_length_cm]],
-                           dtype=np.float64)
+                            [0,               0,              axis_length_cm]], dtype=np.float64)
     axes_cam = (R @ world_frame.T + t.reshape(3, 1))
     axes_img = K @ axes_cam
     axes_image = (axes_img[:2] / axes_img[2:3]).T
