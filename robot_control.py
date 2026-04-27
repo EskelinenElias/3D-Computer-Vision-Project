@@ -1,6 +1,7 @@
 import numpy as np
 
 GRABBER_OFFSET_CM = 12.0
+REVERSE_OFFSET_CM = 6.0
 MIN_TURN_DEG = 0.5
 MIN_DRIVE_CM = 0.5
 
@@ -100,7 +101,7 @@ def _plan_pick_and_place(robot_pos, robot_heading, cube_pos, target_pos):
 
     # Reverse after placing cube
     reverse_steps, robot_pos, robot_heading = _plan_reverse(
-        robot_pos, robot_heading, GRABBER_OFFSET_CM + 2.0)
+        robot_pos, robot_heading, REVERSE_OFFSET_CM)
     steps.extend(reverse_steps)
 
     return steps, robot_pos, robot_heading
