@@ -8,6 +8,7 @@ from camera_calibration_dlt import calibrate_DLT
 from camera_calibration_zhang import compute_intrinsics, compute_extrinsics
 from object_detection import _detect_cubes, _detect_targets, _detect_robot
 from robot_control import _plan_for_color, _translate
+from DLT_calibration_boxes import calibrate_DLT_boxes
 
 PATTERN_SIZE = (8, 6)
 SQUARE_SIZE_CM = 4.0
@@ -43,7 +44,7 @@ def calibrate(intrinsic_imgs, extrinsic_img=None, method="zhang", **kwargs):
         dict with 'K', 'image_size', 'R_scene', 't_scene',
         'extrinsic_rms' (scene-pose reprojection error in pixels).
     """
-    if method not in ("zhang", "dlt"):
+    if method not in ("zhang", "dlt","dlt_boxes"):
         raise ValueError(f"Unknown method: {method!r} (expected 'zhang' or 'dlt')")
 
     if extrinsic_img is None:
@@ -56,7 +57,10 @@ def calibrate(intrinsic_imgs, extrinsic_img=None, method="zhang", **kwargs):
         _, K, R_scene, C = calibrate_DLT(extrinsic_img)
         t_scene = -R_scene @ C
         reproj_rms = None
-
+    elif method == 'dlt_boxes':
+        _, K, R_scene, C = calibrate_DLT_boxes(extrinsic_img)
+        t_scene = -R_scene @ C
+        reproj_rms = None
 
     if reproj_rms is not None:
         print(f"[compute_extrinsics] scene-pose RMS: {reproj_rms:.3f} px")
@@ -116,7 +120,7 @@ if __name__ == "__main__":
     from pathlib import Path
 
     # Choose method
-    method = 'dlt'#'zhang'
+    method = 'dlt_boxes'#'zhang'
 
     if method == 'zhang':
         INTRINSIC_DIR = Path("test-images/intrinsic_calibration")
@@ -126,6 +130,10 @@ if __name__ == "__main__":
         INTRINSIC_DIR = Path("test-images/set1")
         SCENE_DIR     = Path("test-images/set1")
         BLOCKS = ["red", "green", "blue"]
+    elif method == 'dlt_boxes':
+        INTRINSIC_DIR = Path("test-images/dlt-set-4")
+        SCENE_DIR     = Path("test-images/dlt-set-4")
+        BLOCKS = ["green","red", "blue"]
 
     intrinsic_imgs = [Image.open(p) for p in sorted(INTRINSIC_DIR.glob("*.png"))]
     extrinsic_img  = Image.open(sorted((SCENE_DIR / "calibration").glob("*.png"))[0])
