@@ -4,15 +4,14 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from camera_calibration_dlt import calibrate as _calibrate_dlt
+from camera_calibration_dlt import calibrate_DLT
 from camera_calibration_zhang import compute_intrinsics, compute_extrinsics
 from object_detection import _detect_cubes, _detect_targets, _detect_robot
 from robot_control import _plan_for_color, _translate
 
-
 PATTERN_SIZE = (8, 6)
 SQUARE_SIZE_CM = 4.0
-
+ 
 
 def calibrate(intrinsic_imgs, extrinsic_img=None, method="zhang", **kwargs):
     """Calibrate the camera for a scene.
@@ -53,30 +52,14 @@ def calibrate(intrinsic_imgs, extrinsic_img=None, method="zhang", **kwargs):
     if method == "zhang":
         K = compute_intrinsics(intrinsic_imgs)
         R_scene, t_scene, reproj_rms = compute_extrinsics(extrinsic_img, K)
-    else:
-
-        # TODO starts - insert proper DLT calibration here
-
-        if "dlt_points_file" in kwargs:
-            with open(kwargs.pop("dlt_points_file")) as f:
-                saved = json.load(f)
-            kwargs["points_2d"] = np.asarray(saved["points_2d"], dtype=np.float64)
-            kwargs["points_3d"] = np.asarray(saved["points_3d"], dtype=np.float64)
-
-        dlt_result = _calibrate_dlt(
-            extrinsic_img,
-            points_2d=kwargs.get("points_2d"),
-            points_3d=kwargs.get("points_3d"),
-        )
-        K = dlt_result["K"]
-        R_scene, _ = cv2.Rodrigues(dlt_result["rvecs"][-1])
-        t_scene = dlt_result["tvecs"][-1].ravel()
+    elif method == "dlt":
+        _, K, R_scene, t_scene = calibrate_DLT(extrinsic_img)
         reproj_rms = None
 
-        # TODO ends
 
     if reproj_rms is not None:
         print(f"[compute_extrinsics] scene-pose RMS: {reproj_rms:.3f} px")
+    
 
     return {
         "K": K,
@@ -131,16 +114,24 @@ if __name__ == "__main__":
 
     from pathlib import Path
 
-    INTRINSIC_DIR = Path("test-images/intrinsic_calibration")
-    SCENE_DIR     = Path("test-images/scene6")
-    BLOCKS = ["red", "green", "blue"]
+    # Choose method
+    method = 'dlt'#'zhang'
+
+    if method == 'zhang':
+        INTRINSIC_DIR = Path("test-images/intrinsic_calibration")
+        SCENE_DIR     = Path("test-images/scene6")
+        BLOCKS = ["red", "green", "blue"]
+    elif method == 'dlt':
+        INTRINSIC_DIR = Path("test-images/set1")
+        SCENE_DIR     = Path("test-images/set1")
+        BLOCKS = ["red", "green", "blue"]
 
     intrinsic_imgs = [Image.open(p) for p in sorted(INTRINSIC_DIR.glob("*.png"))]
     extrinsic_img  = Image.open(sorted((SCENE_DIR / "calibration").glob("*.png"))[0])
     scene_img      = Image.open(sorted((SCENE_DIR / "images").glob("*.png"))[0])
-
+    
     # Perform calibration
-    calib = calibrate(intrinsic_imgs, extrinsic_img, method="zhang")
+    calib = calibrate(intrinsic_imgs, extrinsic_img, method=method)
    
     # Run object detection and generate commands
     commands = move_block(BLOCKS, scene_img, calib)
