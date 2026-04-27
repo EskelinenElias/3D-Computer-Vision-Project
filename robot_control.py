@@ -53,6 +53,23 @@ def _plan_drive_grabber_to(robot_pos, robot_heading, target_xy):
 
     return steps, robot_pos, robot_heading
 
+def _plan_reverse(robot_pos, robot_heading, distance):
+    """
+    Plan the steps to reverse the robot a given distance.
+    Distance given as positive value.
+
+    Returns (steps, new_robot_pos, new_robot_heading).
+    """
+    steps = []
+    
+    if distance < MIN_DRIVE_CM:
+        return steps, robot_pos, robot_heading
+    
+    robot_pos = robot_pos - distance * np.array(
+            [np.cos(robot_heading), np.sin(robot_heading)])
+    steps.append(_step("go", -distance, robot_pos, robot_heading))
+
+    return steps, robot_pos, robot_heading
 
 def _plan_pick_and_place(robot_pos, robot_heading, cube_pos, target_pos):
     """
@@ -80,6 +97,11 @@ def _plan_pick_and_place(robot_pos, robot_heading, cube_pos, target_pos):
         robot_pos, robot_heading, target_pos[:2])
     steps.extend(drive_steps)
     steps.append(_step("let_go", None, robot_pos, robot_heading))
+
+    # Reverse after placing cube
+    reverse_steps, robot_pos, robot_heading = _plan_reverse(
+        robot_pos, robot_heading, GRABBER_OFFSET_CM + 2.0)
+    steps.extend(reverse_steps)
 
     return steps, robot_pos, robot_heading
 
