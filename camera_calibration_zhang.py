@@ -331,14 +331,16 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     FIGS_DIR = Path("figures")
-    CALIBRATION_DIR = Path("test-images/intrinsic_calibration")
-    SCENE_IMAGE = Path("test-images/scene6/calibration/image0086.png")
+    CALIBRATION_DIR = Path("test-images/intrinsics-2")
+    SCENE_IMAGE = Path("test-images/intrinsics-2/IMG_1361.JPG")
     PATTERN_SIZE = (8, 6)
     SQUARE_SIZE_CM = 4.0
+    AXIS_LENGTH_CM = 3 * SQUARE_SIZE_CM
+    FILETYPE = ".JPG"
 
     FIGS_DIR.mkdir(parents=True, exist_ok=True)
 
-    calib_paths = sorted(CALIBRATION_DIR.glob("*.png"))
+    calib_paths = sorted(CALIBRATION_DIR.glob(f"*{FILETYPE}"))
     calib_images = [Image.open(p) for p in calib_paths]
     print(f"Loaded {len(calib_images)} calibration image(s) from {CALIBRATION_DIR}")
 
@@ -357,11 +359,10 @@ if __name__ == "__main__":
     R, t, rms = compute_extrinsics(overlay_image, K, PATTERN_SIZE, SQUARE_SIZE_CM)
     print(f"Extrinsic RMS: {rms:.3f} px")
 
-    axis_length_cm = 3 * SQUARE_SIZE_CM
     world_frame = np.array([[0, 0, 0],
-                            [axis_length_cm,  0,              0],
-                            [0,              -axis_length_cm, 0],
-                            [0,               0,              axis_length_cm]], dtype=np.float64)
+                            [AXIS_LENGTH_CM,  0,              0],
+                            [0,              AXIS_LENGTH_CM, 0],
+                            [0,               0,              AXIS_LENGTH_CM]], dtype=np.float64)
     axes_cam = (R @ world_frame.T + t.reshape(3, 1))
     axes_img = K @ axes_cam
     axes_image = (axes_img[:2] / axes_img[2:3]).T

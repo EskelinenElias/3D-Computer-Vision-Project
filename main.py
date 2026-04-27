@@ -88,13 +88,20 @@ def calibrate(intrinsic_imgs, extrinsic_img=None, method="zhang", **kwargs):
     }
 
 
-def move_block(blocks, img, calib, toggle_dir: bool=False):
+def move_block(blocks, img, calib,
+               drive_scale=1.0, drive_bias=0.0,
+               turn_scale=1.0, turn_bias=0.0):
     """Return the command string to pick up and place the given cubes.
 
     Args:
         blocks (list<str>): ordered list of cube colours to move.
         img (PIL.Image): scene image with robot and cubes visible.
         calib (dict): output of `calibrate`.
+        drive_scale, drive_bias: real-world drive calibration; output is
+            drive_scale * d + sign(d) * drive_bias.
+        turn_scale, turn_bias: real-world turn calibration; output is
+            turn_scale * theta + sign(theta) * turn_bias. Pass turn_scale=-1.0
+            to flip turn direction.
 
     Returns:
         str: ";" -separated commands, e.g.
@@ -116,7 +123,9 @@ def move_block(blocks, img, calib, toggle_dir: bool=False):
         except KeyError as e:
             print(f"Skipping {color}: {e}")
 
-    return _translate(all_steps, toggle_dir)
+    return _translate(all_steps,
+                      drive_scale=drive_scale, drive_bias=drive_bias,
+                      turn_scale=turn_scale, turn_bias=turn_bias)
 
 
 if __name__ == "__main__":

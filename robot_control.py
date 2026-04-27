@@ -44,7 +44,7 @@ def _plan_drive_grabber_to(robot_pos, robot_heading, target_xy):
         robot_heading = desired_heading
         steps.append(_step("turn", turn_deg, robot_pos, robot_heading))
 
-    # Drive the grapper to target
+    # Drive the grabber to target
     drive_distance = distance_to_target - GRABBER_OFFSET_CM
     if abs(drive_distance) > MIN_DRIVE_CM:
         robot_pos = robot_pos + drive_distance * np.array(
@@ -109,21 +109,32 @@ def _plan_for_color(color, robot_state, cubes, targets):
     return steps
 
 
-def _translate(steps, dir_toggle=False):
+def _translate(steps, drive_scale=1.0, drive_bias=0.0,
+               turn_scale=1.0, turn_bias=0.0):
     """Convert a list of plan-step dicts into the final command string.
 
-    dir_toggle: negate turn angles when the robot's reported heading rotation
-    is opposite to the physical one (set True if the robot turns the wrong way).
+    drive_scale / drive_bias: calibrate `go(d)` distances as
+        d_out = drive_scale * d + sign(d) * drive_bias
+    turn_scale / turn_bias: calibrate `turn(theta)` angles as
+        theta_out = turn_scale * theta + sign(theta) * turn_bias
+
+    Bias is sign-aware so it represents constant under/overshoot regardless of
+    direction. To flip turn direction (robot turns the wrong way), pass
+    turn_scale=-1.0.
     """
     parts = []
     for step in steps:
         cmd, param = step["cmd"], step["param"]
         if param is None:
             parts.append(f"{cmd}()")
-        elif cmd == "turn" and dir_toggle:
-            parts.append(f"{cmd}({-param:.1f})")
+            continue
+        if cmd == "go":
+            value = drive_scale * param + np.sign(param) * drive_bias
+        elif cmd == "turn":
+            value = turn_scale * param + np.sign(param) * turn_bias
         else:
-            parts.append(f"{cmd}({param:.1f})")
+            value = param
+        parts.append(f"{cmd}({value:.1f})")
     return "; ".join(parts)
 
 
@@ -135,7 +146,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     from camera_calibration_zhang import compute_intrinsics, compute_extrinsics
-    from object_detection import _detect_cubes, _detect_target_locations, _detect_robot
+    from object_detection import _detect_cubes, _detect_targets, _detect_robot
 
     INTRINSIC_DIR = Path("test-images/intrinsic_calibration")
     SCENE_DIR     = Path("test-images/scene6")
@@ -145,21 +156,17 @@ if __name__ == "__main__":
     K = compute_intrinsics(intrinsic_images)
 
     extrinsic_path = sorted((SCENE_DIR / "calibration").glob("*.png"))[0]
-    R_scene, t_scene, rms = compute_extrinsics(Image.open(extrinsic_path), K)
+    R, t, rms = compute_extrinsics(Image.open(extrinsic_path), K)
     print(f"Scene pose from {extrinsic_path.name} — reprojection RMS: {rms:.3f} px")
-
-    calibration = {"K": K, "dist": np.zeros((1, 5)),
-                   "image_size": Image.open(extrinsic_path).size,
-                   "R_scene": R_scene, "t_scene": t_scene}
 
     scene_paths = sorted((SCENE_DIR / "images").glob("*.png"))
     scene_image = Image.open(scene_paths[0])
     bgr = cv2.cvtColor(np.array(scene_image), cv2.COLOR_RGB2BGR)
     hsv = cv2.cvtColor(bgr, cv2.COLOR_BGR2HSV)
 
-    cubes   = _detect_cubes(hsv, calibration, R_scene, t_scene)
-    targets = _detect_target_locations(hsv, calibration, R_scene, t_scene)
-    robot   = _detect_robot(hsv, calibration, R_scene, t_scene)
+    cubes   = _detect_cubes(hsv, K, R, t)
+    targets = _detect_targets(hsv, K, R, t)
+    robot   = _detect_robot(hsv, K, R, t)
 
     robot_state = {
         "pos": robot["pos"][:2].copy(),
