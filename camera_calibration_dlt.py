@@ -56,7 +56,7 @@ def pixel_shift(cube_corners):
     top_corner    = cube_corners[0]
 
     # Shift per cm of Z height
-    cube_height_cm = 5.0
+    cube_height_cm = 4.0
     shift_per_cm = (top_corner - bottom_corner) / cube_height_cm
     return shift_per_cm
     
@@ -93,7 +93,7 @@ def construct_3d_coordinates(N):
 def fabricate_height(N, checker_2d, checker_z):
     # modifying the checker_2d values to reflect the fabricated height changes
     for i in range(N):
-        if N % 2 == 0:
+        if i % 2 == 0:
             idx = i
             checker_2d[idx,1] -= checker_z
     return(checker_2d)
