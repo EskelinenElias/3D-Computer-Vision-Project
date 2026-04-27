@@ -1,7 +1,7 @@
 import cv2 as cv
 import numpy as np
 import matplotlib.pyplot as plt
-import h5py
+# import h5py
 from checkerboard_detection import _find_checkerboard_corners
 from PIL import Image
 from scipy.linalg import rq
@@ -192,9 +192,7 @@ def decompose_projection(M):
 
 
 
-def calibrate_DLT(extrinsic_img_input):
-    PATTERN_SIZE = (8, 6)
-
+def calibrate_DLT(extrinsic_img_input, patter_size=(8,6)):
     # ── Accept either a file path OR a PIL Image ───────────────────────────
     if isinstance(extrinsic_img_input, (str, Path)):
         extrinsic_img_cv  = cv.imread(str(extrinsic_img_input), cv.IMREAD_COLOR_RGB)
@@ -213,7 +211,7 @@ def calibrate_DLT(extrinsic_img_input):
     checker_z = 4 * shift_per_cm[1]
 
     # Finding the checkerboard spots
-    checker_2d = checkerboard_check([extrinsic_img_pil], PATTERN_SIZE)
+    checker_2d = checkerboard_check([extrinsic_img_pil], patter_size)
     N = len(checker_2d)
 
     # Fabricating the height to the 2d coordinates, making the squares "cubes"

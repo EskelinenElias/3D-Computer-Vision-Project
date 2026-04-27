@@ -9,12 +9,9 @@ from camera_calibration_zhang import compute_intrinsics, compute_extrinsics
 from object_detection import _detect_cubes, _detect_targets, _detect_robot
 from robot_control import _plan_for_color, _translate
 from DLT_calibration_boxes import calibrate_DLT_boxes
-
-PATTERN_SIZE = (8, 6)
-SQUARE_SIZE_CM = 4.0
  
 
-def calibrate(intrinsic_imgs, extrinsic_img=None, method="zhang", **kwargs):
+def calibrate(intrinsic_imgs, extrinsic_img=None, method="zhang", pattern_size=(8,6)):
     """Calibrate the camera for a scene.
 
     The calibration is a two-step process:
@@ -35,10 +32,8 @@ def calibrate(intrinsic_imgs, extrinsic_img=None, method="zhang", **kwargs):
               - Zhang: falls back to `intrinsic_imgs[-1]`. Only correct when
                 the camera didn't move between calibration and the scene.
               - DLT:   falls back to `intrinsic_imgs[0]` (the DLT image).
-        method (str): "zhang" (default) or "dlt".
-        **kwargs:
-            - method="dlt": must supply `points_2d` + `points_3d` (np.ndarray)
-              or `dlt_points_file` (JSON path with "points_2d"/"points_3d").
+        method (str): "zhang" (default) or "dlt" or "dlt_boxes".
+        pattern_size (tuple): size of the checkerboard pattern, default (8,6)
 
     Returns:
         dict with 'K', 'image_size', 'R_scene', 't_scene',
@@ -51,10 +46,10 @@ def calibrate(intrinsic_imgs, extrinsic_img=None, method="zhang", **kwargs):
         extrinsic_img = intrinsic_imgs[-1 if method == "zhang" else 0]
 
     if method == "zhang":
-        K = compute_intrinsics(intrinsic_imgs)
-        R_scene, t_scene, reproj_rms = compute_extrinsics(extrinsic_img, K)
+        K = compute_intrinsics(intrinsic_imgs, pattern_size)
+        R_scene, t_scene, reproj_rms = compute_extrinsics(extrinsic_img, K, pattern_size)
     elif method == "dlt":
-        _, K, R_scene, C = calibrate_DLT(extrinsic_img)
+        _, K, R_scene, C = calibrate_DLT(extrinsic_img, pattern_size)
         t_scene = -R_scene @ C
         reproj_rms = None
     elif method == 'dlt_boxes':

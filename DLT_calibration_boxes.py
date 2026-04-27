@@ -142,8 +142,6 @@ def decompose_projection(M):
 
 
 def calibrate_DLT_boxes(extrinsic_img_input):
-    PATTERN_SIZE = (8, 6)
-
     # ── Accept either a file path OR a PIL Image ───────────────────────────
     if isinstance(extrinsic_img_input, (str, Path)):
         extrinsic_img_cv  = cv.imread(str(extrinsic_img_input), cv.IMREAD_COLOR_RGB)
