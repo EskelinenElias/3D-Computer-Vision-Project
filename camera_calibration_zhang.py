@@ -331,12 +331,12 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     FIGS_DIR = Path("figures")
-    CALIBRATION_DIR = Path("test-images/intrinsics-2")
-    SCENE_IMAGE = Path("test-images/intrinsics-2/IMG_1361.JPG")
+    CALIBRATION_DIR = Path("test-images/intrinsics-4")
+    SCENE_IMAGE = Path("test-images/intrinsics-4/IMG_4141.jpeg")
     PATTERN_SIZE = (8, 6)
     SQUARE_SIZE_CM = 4.0
     AXIS_LENGTH_CM = 3 * SQUARE_SIZE_CM
-    FILETYPE = ".JPG"
+    FILETYPE = ".jpeg"
 
     FIGS_DIR.mkdir(parents=True, exist_ok=True)
 

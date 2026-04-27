@@ -214,7 +214,6 @@ def calibrate(pil_image, points_2d=None, points_3d=None,
 
     return {
         "K": K,
-        "dist": np.zeros((1, 5)),
         "image_size": image_size,
         "rvecs": [rvec.reshape(3, 1)],
         "tvecs": [tvec.reshape(3, 1)],

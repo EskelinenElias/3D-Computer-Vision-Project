@@ -41,7 +41,7 @@ def calibrate(intrinsic_imgs, extrinsic_img=None, method="zhang", **kwargs):
               or `dlt_points_file` (JSON path with "points_2d"/"points_3d").
 
     Returns:
-        dict with 'K', 'dist', 'image_size', 'R_scene', 't_scene',
+        dict with 'K', 'image_size', 'R_scene', 't_scene',
         'extrinsic_rms' (scene-pose reprojection error in pixels).
     """
     if method not in ("zhang", "dlt"):
@@ -80,7 +80,6 @@ def calibrate(intrinsic_imgs, extrinsic_img=None, method="zhang", **kwargs):
 
     return {
         "K": K,
-        "dist": np.zeros((1, 5)),
         "image_size": extrinsic_img.size,
         "R_scene": R_scene,
         "t_scene": t_scene,
